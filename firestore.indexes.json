@@ -1,0 +1,125 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "eventos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "creado_por", "order": "ASCENDING"},
+        {"fieldPath": "creado_en", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "eventos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "estado", "order": "ASCENDING"},
+        {"fieldPath": "vence_el", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "eventos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "estado", "order": "ASCENDING"},
+        {"fieldPath": "creado_en", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "eventos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "moneda", "order": "ASCENDING"},
+        {"fieldPath": "creado_en", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "eventos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "repeticion", "order": "ASCENDING"},
+        {"fieldPath": "estado", "order": "ASCENDING"},
+        {"fieldPath": "creado_en", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "balances",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "entre", "order": "ASCENDING"},
+        {"fieldPath": "moneda", "order": "ASCENDING"},
+        {"fieldPath": "actualizado_en", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "balances",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "moneda", "order": "ASCENDING"},
+        {"fieldPath": "actualizado_en", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "invitaciones",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "evento_id", "order": "ASCENDING"},
+        {"fieldPath": "creado_en", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "invitaciones",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "token", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "auditorias",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "evento_id", "order": "ASCENDING"},
+        {"fieldPath": "en", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "auditorias",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "actor", "order": "ASCENDING"},
+        {"fieldPath": "en", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "auditorias",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "tipo", "order": "ASCENDING"},
+        {"fieldPath": "en", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "usuarios",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "email", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "fcm_tokens",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "userId", "order": "ASCENDING"},
+        {"fieldPath": "active", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "user_settings",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "userId", "order": "ASCENDING"},
+        {"fieldPath": "updated_at", "order": "DESCENDING"}
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

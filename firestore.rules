@@ -1,0 +1,265 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+    
+    // =============================================================================
+    // FUNCIONES AUXILIARES
+    // =============================================================================
+    
+    // Verifica si el usuario está autenticado
+    function isAuth() { 
+      return request.auth != null; 
+    }
+    
+    // Verifica si el usuario tiene un UID específico
+    function hasUid(u) { 
+      return isAuth() && request.auth.uid == u; 
+    }
+    
+    // Verifica si el usuario es participante de un evento
+    function isParticipant(resourceData) {
+      return isAuth() && request.auth.uid in resourceData.participantesUids;
+    }
+
+    // Valida que sólo se cambien ciertos campos
+    function fieldsChangedOnly(keys) {
+      return request.resource.data.diff(resource.data).changedKeys().hasOnly(keys);
+    }
+
+    // Verifica si el usuario será participante en nuevos datos
+    function willBeParticipant(newData) {
+      return isAuth() && request.auth.uid in newData.participantesUids;
+    }    // Verifica si el usuario es creador del evento
+    function isCreator(resourceData) {
+      return isAuth() && resourceData.creado_por == request.auth.uid;
+    }
+    
+    // Verifica si el usuario será creador en nuevos datos
+    function willBeCreator(newData) {
+      return isAuth() && newData.creado_por == request.auth.uid;
+    }
+    
+    // Verifica si el evento está abierto
+    function isEventOpen(resourceData) {
+      return resourceData.estado == "abierto";
+    }
+    
+    // Verifica si el evento está cerrado
+    function isEventClosed(resourceData) {
+      return resourceData.estado == "cerrado";
+    }
+    
+    // Verifica si el usuario puede editar el evento
+    function canEditEvent(resourceData) {
+      return isCreator(resourceData) || 
+             (isParticipant(resourceData) && isEventOpen(resourceData));
+    }
+    
+    // Verifica si el usuario puede editar después del cierre
+    function canEditAfterClose(resourceData) {
+      return isCreator(resourceData);
+    }
+    
+    // =============================================================================
+    // REGLAS PARA EVENTOS
+    // =============================================================================
+    
+    match /eventos/{eventoId} {
+      // Crear evento: solo usuarios autenticados que serán participantes
+      allow create: if isAuth() && willBeParticipant(request.resource.data);
+      
+      // Leer evento: solo participantes
+      allow read: if isAuth() && isParticipant(resource.data);
+      
+      // Actualizar evento:
+      // - Solo el creador puede actualizar campos del evento
+      // - Los no participantes solo pueden unirse mediante invitación (canSelfJoin)
+      allow update: if isAuth() && (
+        isCreator(resource.data) ||
+        canSelfJoin(eventoId, request.resource.data, resource.data)
+      );
+      
+      // Eliminar evento: no permitido (solo soft delete)
+      allow delete: if false;
+    }
+
+    // Permitir que un usuario se una a un evento abierto con un token válido
+    function canSelfJoin(eventoId, newData, oldData) {
+      return isEventOpen(oldData) &&
+             // Aún no participa
+             !(request.auth.uid in oldData.participantesUids) &&
+             // Se agrega su UID y sólo cambian los campos permitidos
+             (request.auth.uid in newData.participantesUids) &&
+             fieldsChangedOnly(['participantesUids', 'last_join_token']) &&
+             // La lista crece exactamente en 1
+             (newData.participantesUids.size() == oldData.participantesUids.size() + 1) &&
+             // El token provisto coincide con el del evento
+             (newData.last_join_token == oldData.token_invitacion) &&
+             // Existe invitación válida
+             hasValidInvitation(eventoId, oldData.token_invitacion);
+    }
+
+    function hasValidInvitation(eventoId, token) {
+      return exists(/databases/$(db)/documents/invitaciones/$(token)) &&
+             get(/databases/$(db)/documents/invitaciones/$(token)).data.evento_id == eventoId;
+    }
+    
+    // =============================================================================
+    // REGLAS PARA INVITACIONES
+    // =============================================================================
+    
+    match /invitaciones/{id} {
+      // Crear y leer: usuarios autenticados
+      // Las invitaciones se pueden mostrar al creador para generar QR/URL
+      allow create, read: if isAuth();
+      
+      // Actualizar y eliminar: no permitido (gestionado por Cloud Functions)
+      allow update, delete: if false;
+    }
+    
+    // =============================================================================
+    // REGLAS PARA BALANCES
+    // =============================================================================
+    
+    match /balances/{id} {
+      // Leer: solo si el usuario pertenece al par de balance
+      allow read: if isAuth() && (
+        resource.data.entre[0] == request.auth.uid ||
+        resource.data.entre[1] == request.auth.uid
+      );
+      
+      // Escribir: no permitido (solo Cloud Functions)
+      allow write: if false;
+    }
+    
+    // =============================================================================
+    // REGLAS PARA AUDITORÍAS
+    // =============================================================================
+    
+    match /auditorias/{id} {
+      // Crear: no permitido (solo Cloud Functions)
+      allow create: if false;
+      
+      // Leer: usuarios autenticados (se puede filtrar por evento y participación)
+      allow read: if isAuth();
+      
+      // Actualizar y eliminar: no permitido
+      allow update, delete: if false;
+    }
+    
+    // =============================================================================
+    // REGLAS PARA USUARIOS (PERFILES)
+    // =============================================================================
+    
+    match /usuarios/{userId} {
+      // Leer: cualquier usuario autenticado puede leer perfiles básicos
+      allow read: if isAuth();
+      
+      // Crear: solo el propio usuario
+      allow create: if hasUid(userId);
+      
+      // Actualizar: solo el propio usuario
+      allow update: if hasUid(userId);
+      
+      // Eliminar: no permitido
+      allow delete: if false;
+    }
+    
+    // =============================================================================
+    // REGLAS PARA NOTIFICACIONES FCM
+    // =============================================================================
+    
+    match /fcm_tokens/{tokenId} {
+      // Leer: solo el propietario del token
+      allow read: if isAuth() && resource.data.userId == request.auth.uid;
+      
+      // Crear: usuarios autenticados para su propio token
+      allow create: if isAuth() && request.resource.data.userId == request.auth.uid;
+      
+      // Actualizar: solo el propietario del token
+      allow update: if isAuth() && resource.data.userId == request.auth.uid;
+      
+      // Eliminar: solo el propietario del token
+      allow delete: if isAuth() && resource.data.userId == request.auth.uid;
+    }
+    
+    // =============================================================================
+    // REGLAS PARA CONFIGURACIONES DE USUARIO
+    // =============================================================================
+    
+    match /user_settings/{userId} {
+      // Leer: solo el propio usuario
+      allow read: if hasUid(userId);
+      
+      // Crear: solo el propio usuario
+      allow create: if hasUid(userId);
+      
+      // Actualizar: solo el propio usuario
+      allow update: if hasUid(userId);
+      
+      // Eliminar: solo el propio usuario
+      allow delete: if hasUid(userId);
+    }
+    
+    // =============================================================================
+    // REGLAS PARA TEMPORALES (UPLOADS, ETC.)
+    // =============================================================================
+    
+    match /temp/{userId}/{document=**} {
+      // Acceso temporal: solo el propietario
+      allow read, write: if hasUid(userId);
+    }
+    
+    // =============================================================================
+    // REGLAS PARA MÉTRICAS Y ESTADÍSTICAS
+    // =============================================================================
+    
+    match /metrics/{metricId} {
+      // Solo lectura para métricas públicas
+      allow read: if true;
+      
+      // Escritura: solo Cloud Functions
+      allow write: if false;
+    }
+    
+    // =============================================================================
+    // REGLAS PARA CONFIGURACIONES GLOBALES
+    // =============================================================================
+    
+    match /config/{configId} {
+      // Configuraciones globales: solo lectura
+      allow read: if true;
+      
+      // Escritura: solo administradores (implementar lógica de roles si es necesario)
+      allow write: if false;
+    }
+    
+    // =============================================================================
+    // REGLAS PARA BACKUP Y ARCHIVOS
+    // =============================================================================
+    
+    match /backups/{backupId} {
+      // Backups: solo administradores
+      allow read, write: if false;
+    }
+    
+    // =============================================================================
+    // REGLAS PARA LOGS Y DEBUGGING
+    // =============================================================================
+    
+    match /logs/{logId} {
+      // Logs: solo en desarrollo o para administradores
+      allow read, write: if false;
+    }
+    
+    // =============================================================================
+    // REGLAS PARA TESTING Y DESARROLLO
+    // =============================================================================
+    
+    // En desarrollo, permitir acceso completo a datos de prueba
+    match /test_data/{document=**} {
+      // Solo en modo desarrollo/emulador
+      allow read, write: if false;
+    }
+  }
+}

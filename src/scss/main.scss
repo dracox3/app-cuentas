@@ -1,0 +1,34 @@
+// =============================================================================
+// Gastos Compartidos - SCSS mínimo (overrides locales)
+// =============================================================================
+
+// Nota: Bootstrap + Bootswatch (Litera) se cargan por CDN.
+// Este archivo debe mantenerse liviano para evitar conflictos y
+// solo incluir ajustes visuales propios de la app.
+
+// Link activo en la navbar
+.navbar .nav-link.active {
+  font-weight: 600;
+}
+
+// Avatar con inicial del usuario
+.avatar-text {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  font-weight: 600;
+}
+
+// Contenedor de eventos (separación vertical mínima entre elementos de grid)
+#eventosList > * {
+  margin-bottom: 0.5rem;
+}
+
+// Overlay de carga: el estado de display lo maneja JS (UI)
+#loadingOverlay {
+  display: none;
+}
+

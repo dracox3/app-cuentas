@@ -1,0 +1,115 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    // =============================================================================
+    // REGLAS PARA ARCHIVOS DE EVENTOS
+    // =============================================================================
+    
+    // Estructura: events/{eventoId}/{filename}
+    match /events/{eventoId}/{fileName} {
+      // Permitir lectura y escritura solo a participantes del evento
+      allow read, write: if request.auth != null && 
+                           isParticipant(eventoId) && 
+                           isValidFile() && 
+                           underLimit(eventoId);
+    }
+    
+    // =============================================================================
+    // REGLAS PARA AVATARES DE USUARIO
+    // =============================================================================
+    
+    // Estructura: avatars/{userId}/{filename}
+    match /avatars/{userId}/{fileName} {
+      // Solo el propietario puede leer/escribir su avatar
+      allow read, write: if request.auth != null && 
+                           request.auth.uid == userId && 
+                           isValidImageFile();
+    }
+    
+    // =============================================================================
+    // REGLAS PARA ARCHIVOS TEMPORALES
+    // =============================================================================
+    
+    // Estructura: temp/{userId}/{filename}
+    match /temp/{userId}/{fileName} {
+      // Solo el propietario puede leer/escribir archivos temporales
+      allow read, write: if request.auth != null && 
+                           request.auth.uid == userId && 
+                           isValidFile();
+    }
+    
+    // =============================================================================
+    // FUNCIONES AUXILIARES
+    // =============================================================================
+    
+    // Verifica si el usuario es participante del evento
+    function isParticipant(eventoId) {
+      return exists(/databases/(default)/documents/eventos/$(eventoId)) &&
+             get(/databases/(default)/documents/eventos/$(eventoId)).data.participantes
+             .where(p => p.uid == request.auth.uid).size() > 0;
+    }
+    
+    // Valida que el archivo sea del tipo y tamaño correcto
+    function isValidFile() {
+      return request.resource.size < 1 * 1024 * 1024 && // < 1MB
+             ["image/png", "image/jpeg", "image/jpg", "image/gif", "application/pdf"]
+             .hasOnly(request.resource.contentType);
+    }
+    
+    // Valida que el archivo sea una imagen
+    function isValidImageFile() {
+      return request.resource.size < 2 * 1024 * 1024 && // < 2MB para imágenes
+             ["image/png", "image/jpeg", "image/jpg", "image/gif", "image/webp"]
+             .hasOnly(request.resource.contentType);
+    }
+    
+    // Verifica que no se supere el límite de archivos por evento
+    // Nota: Esta validación es defensiva, la validación fuerte debe ir en Cloud Functions
+    function underLimit(eventoId) {
+      // Por ahora permitimos y las Functions validarán
+      return true;
+    }
+    
+    // =============================================================================
+    // REGLAS PARA ARCHIVOS PÚBLICOS
+    // =============================================================================
+    
+    // Estructura: public/{filename}
+    match /public/{fileName} {
+      // Archivos públicos: solo lectura
+      allow read: if true;
+      allow write: if false; // Solo administradores pueden escribir
+    }
+    
+    // =============================================================================
+    // REGLAS PARA BACKUPS Y ARCHIVOS DEL SISTEMA
+    // =============================================================================
+    
+    // Estructura: system/{type}/{filename}
+    match /system/{type}/{fileName} {
+      // Archivos del sistema: no accesibles desde el cliente
+      allow read, write: if false;
+    }
+    
+    // =============================================================================
+    // REGLAS PARA LOGS Y DEBUGGING
+    // =============================================================================
+    
+    // Estructura: logs/{date}/{filename}
+    match /logs/{date}/{fileName} {
+      // Logs: no accesibles desde el cliente
+      allow read, write: if false;
+    }
+    
+    // =============================================================================
+    // REGLAS PARA TESTING Y DESARROLLO
+    // =============================================================================
+    
+    // Estructura: test/{userId}/{filename}
+    match /test/{userId}/{fileName} {
+      // Archivos de prueba: solo en desarrollo
+      allow read, write: if false;
+    }
+  }
+}
