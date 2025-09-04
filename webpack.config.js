@@ -32,7 +32,7 @@ module.exports = (env, argv) => {
     
     // Configuración de salida
     output: {
-      path: path.resolve(__dirname, 'dist'),
+      path: isProduction ? path.resolve(__dirname, 'public'):path.resolve(__dirname, 'dist'),
       filename: isProduction ? 'js/[name].[contenthash].js' : 'js/[name].js',
       chunkFilename: isProduction ? 'js/[name].[contenthash].chunk.js' : 'js/[name].chunk.js',
       clean: true,
@@ -79,6 +79,7 @@ module.exports = (env, argv) => {
               loader: 'sass-loader',
               options: {
                 sourceMap: !isProduction
+              , implementation: require('sass')
               }
             }
           ]
@@ -130,9 +131,10 @@ module.exports = (env, argv) => {
     // Plugins
     plugins: [
         // Define variables de entorno
+        // Definir solo las claves individuales y NODE_ENV explícitamente
         new webpack.DefinePlugin({
-          'process.env': JSON.stringify(parsedEnv),
-          ...envKeys
+          ...envKeys,
+          'process.env.NODE_ENV': JSON.stringify(isProduction ? 'production' : 'development')
         }),
         // Polyfill para process/browser
         new webpack.ProvidePlugin({
