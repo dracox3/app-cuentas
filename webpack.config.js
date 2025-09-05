@@ -172,6 +172,12 @@ module.exports = (env, argv) => {
             from: 'src/assets',
             to: 'assets',
             noErrorOnMissing: true
+          },
+          // Copiar SW de FCM si existe (sin inyectar config)
+          {
+            from: 'src/firebase-messaging-sw.js',
+            to: 'firebase-messaging-sw.js',
+            noErrorOnMissing: true
           }
         ]
       }),
@@ -181,6 +187,7 @@ module.exports = (env, argv) => {
     
     // Optimizaciones
     optimization: {
+      runtimeChunk: 'single',
       minimize: isProduction,
       minimizer: [
         new TerserPlugin({

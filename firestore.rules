@@ -74,9 +74,11 @@ service cloud.firestore {
       // Actualizar evento:
       // - Solo el creador puede actualizar campos del evento
       // - Los no participantes solo pueden unirse mediante invitación (canSelfJoin)
+      // - Un participante puede marcar su propio estado de pago (canSelfMarkPaid)
       allow update: if isAuth() && (
         isCreator(resource.data) ||
-        canSelfJoin(eventoId, request.resource.data, resource.data)
+        canSelfJoin(eventoId, request.resource.data, resource.data) ||
+        canSelfMarkPaid(request.resource.data, resource.data)
       );
       
       // Eliminar evento: no permitido (solo soft delete)
@@ -102,6 +104,22 @@ service cloud.firestore {
     function hasValidInvitation(eventoId, token) {
       return exists(/databases/$(db)/documents/invitaciones/$(token)) &&
              get(/databases/$(db)/documents/invitaciones/$(token)).data.evento_id == eventoId;
+    }
+
+    // Permite a un participante marcar su propio estado de pago (true/false)
+    // Reglas:
+    //  - Evento debe estar abierto
+    //  - Usuario debe ser participante
+    //  - Solo puede cambiarse el campo 'pagos' y dentro de él únicamente la clave de su propio UID
+    //  - El valor debe ser booleano
+    function canSelfMarkPaid(newData, oldData) {
+      return isEventOpen(oldData) &&
+             isParticipant(oldData) &&
+             // Solo cambia el mapa 'pagos'
+             newData.diff(oldData).changedKeys().hasOnly(['pagos']) &&
+             // Dentro de 'pagos', solo cambia la clave de su UID
+             newData.pagos.diff(oldData.pagos).changedKeys().hasOnly([request.auth.uid]) &&
+             (newData.pagos[request.auth.uid] is bool);
     }
     
     // =============================================================================

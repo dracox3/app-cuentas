@@ -10,6 +10,7 @@ import { userService } from './services/userService.js';
 import { router } from './core/router.js';
 import { state } from './core/state.js';
 import { ui } from './ui/ui.js';
+import { messagingService } from './services/messagingService.js';
 
 // =============================================================================
 // CONFIGURACIÓN DE FIREBASE
@@ -27,6 +28,7 @@ class GastosCompartidosApp {
     this.isInitialized = false;
     this.currentUser = null;
     this.currentRoute = '/';
+    this.filtersBound = false;
     
     // Bindear métodos
     this.handleAuthStateChange = this.handleAuthStateChange.bind(this);
@@ -310,6 +312,8 @@ class GastosCompartidosApp {
 
       // Cargar datos del usuario
       await this.loadUserData(user);
+      // Habilitar FCM (token + listeners) si hay VAPID configurado
+      try { await messagingService.enableForUser(user); } catch (_) {}
       // Guardar perfil básico en Firestore (si faltara)
       try { await userService.saveProfile({ displayName: user.displayName || '' }); } catch (_) {}
 
@@ -326,6 +330,8 @@ class GastosCompartidosApp {
    */
   async handleUserUnauthenticated() {
     try {
+      // Deshabilitar FCM del usuario anterior
+      try { await messagingService.disableForUser(); } catch (_) {}
       console.log('🚪 Usuario no autenticado');
       
       // Limpiar estado del usuario
@@ -504,14 +510,34 @@ class GastosCompartidosApp {
     const list = document.getElementById('eventosList');
     const empty = document.getElementById('emptyState');
     if (!list) return;
+
+    // Aplicar filtros de UI (por defecto: estado=abierto)
+    const selEstado = document.getElementById('filterEstado');
+    const selMoneda = document.getElementById('filterMoneda');
+    const txtSearch = document.getElementById('searchEventos');
+    if (selEstado && !selEstado.value) selEstado.value = 'abierto';
+    const estado = selEstado ? (selEstado.value || 'abierto') : 'abierto';
+    const moneda = selMoneda ? (selMoneda.value || '') : '';
+    const q = (txtSearch && txtSearch.value ? txtSearch.value.trim().toLowerCase() : '');
+
+    const filtered = (eventos || []).filter(evt => {
+      if (estado && (evt.estado || '') !== estado) return false;
+      if (moneda && (evt.moneda || '') !== moneda) return false;
+      if (q) {
+        const t = (evt.titulo || '').toString().toLowerCase();
+        if (!t.includes(q)) return false;
+      }
+      return true;
+    });
+
     list.innerHTML = '';
-    if (!eventos || eventos.length === 0) {
+    if (!filtered || filtered.length === 0) {
       if (empty) empty.style.display = 'block';
       return;
     }
     if (empty) empty.style.display = 'none';
     const frag = document.createDocumentFragment();
-    eventos.forEach(evt => {
+    filtered.forEach(evt => {
       const invited = Array.isArray(evt.participantesUids) ? evt.participantesUids.length : (Array.isArray(evt.participantes) ? evt.participantes.length : 0);
       const def = Number(evt.participantes_definidos || 0);
       const n = invited > 0 ? invited : (def > 0 ? def : 1);
@@ -764,6 +790,7 @@ class GastosCompartidosApp {
             uids.forEach(uid => {
               const row = document.createElement('div');
               row.className = 'd-flex align-items-center justify-content-between border-bottom py-2';
+              row.setAttribute('data-uid', uid);
               const isMe = this.currentUser && uid === this.currentUser.uid;
               const prof = profiles[uid] || {};
               const profName = prof.displayName || prof.email || '';
@@ -787,6 +814,44 @@ class GastosCompartidosApp {
               frag.appendChild(row);
             });
             plist.appendChild(frag);
+
+            // Si no es creador, permitir que el propio usuario marque su pago
+            uids.forEach(uid => {
+              const isMe = this.currentUser && uid === this.currentUser.uid;
+              const canSelfToggle = !isOwner && isMe && evt.estado !== 'cerrado';
+              if (!canSelfToggle) return;
+              const row = plist.querySelector(`div[data-uid="${uid}"]`);
+              if (!row) return;
+              const actions = row.querySelector('.d-flex.align-items-center.gap-3');
+              if (!actions) return;
+              // Si no existe el switch, crearlo y reemplazar el badge
+              if (!actions.querySelector(`#paid_${uid}`)) {
+                const badge = actions.querySelector('.badge');
+                const wrapper = document.createElement('div');
+                wrapper.className = 'form-check form-switch m-0';
+                wrapper.innerHTML = `
+                  <input class="form-check-input" type="checkbox" id="paid_${uid}" ${pagos[uid] ? 'checked' : ''}>
+                  <label class="form-check-label" for="paid_${uid}">Pagado</label>
+                `;
+                if (badge) {
+                  actions.replaceChild(wrapper, badge);
+                } else {
+                  actions.prepend(wrapper);
+                }
+              }
+              const input = actions.querySelector(`#paid_${uid}`);
+              if (input) {
+                input.addEventListener('change', async () => {
+                  try {
+                    await eventsService.setPago(evt.id, uid, input.checked);
+                    ui.showNotification('Tu estado de pago fue actualizado', 'success');
+                  } catch (e) {
+                    ui.showError('No se pudo actualizar tu estado de pago');
+                    input.checked = !input.checked;
+                  }
+                });
+              }
+            });
 
             if (isOwner) {
               uids.forEach(uid => {
@@ -937,6 +1002,43 @@ class GastosCompartidosApp {
         list.appendChild(item);
       });
       container.appendChild(list);
+
+      // Detalle por evento: muestra si tú pagaste y, si no, a quién le debes
+      const meUser = this.currentUser;
+      if (meUser) {
+        const myProfile = await userService.getProfile().catch(() => null);
+        const myName = (myProfile && myProfile.displayName) || meUser.displayName || (meUser.email || 'Yo');
+        const creators = Array.from(new Set(closed.map(e => e.creado_por)));
+        const creatorsProfiles = await userService.getProfiles(creators).catch(() => ({}));
+        const detail = document.createElement('div');
+        detail.className = 'mt-3';
+        const header = document.createElement('h6');
+        header.className = 'mt-3 mb-2';
+        header.textContent = 'Detalle por evento';
+        detail.appendChild(header);
+        const dl = document.createElement('div');
+        dl.className = 'list-group';
+        closed.forEach(e => {
+          const paid = e.pagos && (e.pagos[meUser.uid] === true);
+          const creadorProf = creatorsProfiles[e.creado_por] || {};
+          const creadorName = creadorProf.displayName || creadorProf.email || (e.creado_por.length > 10 ? e.creado_por.slice(0,6) + '…' + e.creado_por.slice(-4) : e.creado_por);
+          const item = document.createElement('div');
+          item.className = 'list-group-item';
+          const owe = !paid && meUser.uid !== e.quien_pago;
+          item.innerHTML = `
+            <div class="d-flex justify-content-between align-items-center">
+              <div>
+                <div><strong>Evento:</strong> ${e.titulo || e.id}</div>
+                <div><small>${myName} pagó: ${paid ? 'Sí' : 'No'}${owe ? ` — Debes a ${creadorName}` : ''}</small></div>
+              </div>
+              <div><span class="badge ${e.estado === 'cerrado' ? 'bg-secondary' : 'bg-success'}">${e.estado}</span></div>
+            </div>
+          `;
+          dl.appendChild(item);
+        });
+        detail.appendChild(dl);
+        container.appendChild(detail);
+      }
       
     } catch (error) {
       console.error('❌ Error al cargar balances:', error);
@@ -1242,6 +1344,35 @@ const app = new GastosCompartidosApp();
 if (process.env.NODE_ENV === 'development') {
   window.app = app;
 }
+
+// Enlazar filtros del dashboard una sola vez y preset Estado=abierto
+(() => {
+  let bound = false;
+  const bind = () => {
+    if (bound) return;
+    const selEstado = document.getElementById('filterEstado');
+    const selMoneda = document.getElementById('filterMoneda');
+    const txtSearch = document.getElementById('searchEventos');
+    if (!selEstado && !selMoneda && !txtSearch) return; // dashboard aún no en DOM
+
+    // Preset
+    if (selEstado && !selEstado.value) selEstado.value = 'abierto';
+
+    const rerender = () => {
+      const eventos = state.getEventos();
+      app.renderEventosList(eventos || []);
+    };
+    if (selEstado && !selEstado.__gc_bound) { selEstado.addEventListener('change', rerender); selEstado.__gc_bound = true; }
+    if (selMoneda && !selMoneda.__gc_bound) { selMoneda.addEventListener('change', rerender); selMoneda.__gc_bound = true; }
+    if (txtSearch && !txtSearch.__gc_bound) { txtSearch.addEventListener('input', ui.debounce(rerender, 200)); txtSearch.__gc_bound = true; }
+    bound = true;
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bind, { once: true });
+  } else {
+    bind();
+  }
+})();
 
 // Exportar por defecto
 export default app;

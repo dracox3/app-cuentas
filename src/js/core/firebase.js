@@ -50,15 +50,7 @@ function initializeFirebase() {
       'FIREBASE_APP_ID'
     ];
     
-    // Definición de configuración manual para desarrollo si las variables faltan
-    const devConfig = {
-      apiKey: "AIzaSyBWVAa7sQU0CV79hU9quNYnAHa4rBmMXsQ",
-      authDomain: "a2cuentas.firebaseapp.com",
-      projectId: "a2cuentas",
-      storageBucket: "a2cuentas.firebasestorage.app",
-      messagingSenderId: "551271044147",
-      appId: "1:551271044147:web:6e3965f29c6f38e1243f46c"
-    };
+    // No embebemos configuración: se requiere .env.local para todas las claves
     
     // Debug: Mostrar valores de variables de Firebase
     console.log('🔍 Variables de Firebase:');
@@ -67,21 +59,18 @@ function initializeFirebase() {
       console.log(`  ${varName}:`, value ? `Configurado` : 'No configurado');
     });
     
-    // Verificar si falta alguna variable de entorno
-    const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
-    
-    // Si faltan variables, usamos la configuración de desarrollo
+    // Verificar si falta alguna variable de entorno usando firebaseConfig (reemplazos de build)
+    const missingVars = [
+      !firebaseConfig.apiKey && 'FIREBASE_API_KEY',
+      !firebaseConfig.authDomain && 'FIREBASE_AUTH_DOMAIN',
+      !firebaseConfig.projectId && 'FIREBASE_PROJECT_ID',
+      !firebaseConfig.storageBucket && 'FIREBASE_STORAGE_BUCKET',
+      !firebaseConfig.messagingSenderId && 'FIREBASE_MESSAGING_SENDER_ID',
+      !firebaseConfig.appId && 'FIREBASE_APP_ID',
+    ].filter(Boolean);
     if (missingVars.length > 0) {
-      console.warn('⚠️ Algunas variables de Firebase no están disponibles:', missingVars);
-      console.warn('⚠️ Usando configuración de desarrollo');
-      
-      // Actualizar la configuración con valores de desarrollo
-      firebaseConfig.apiKey = devConfig.apiKey;
-      firebaseConfig.authDomain = devConfig.authDomain;
-      firebaseConfig.projectId = devConfig.projectId;
-      firebaseConfig.storageBucket = devConfig.storageBucket;
-      firebaseConfig.messagingSenderId = devConfig.messagingSenderId;
-      firebaseConfig.appId = devConfig.appId;
+      console.error('Faltan variables de entorno de Firebase:', missingVars);
+      throw new Error('Configuración de Firebase incompleta. Define las variables en .env.local');
     }
     
     // Debug: Mostrar configuración final
@@ -491,3 +480,4 @@ if (NODE_ENV === 'development') {
     console.warn('⚠️ No se pudo inicializar Firebase automáticamente:', error.message);
   }
 }
+
